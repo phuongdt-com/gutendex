@@ -25,12 +25,38 @@ print(Book.objects.count())
 
 echo "Current book count: $BOOK_COUNT"
 
-if [ "$BOOK_COUNT" = "0" ] || [ -z "$BOOK_COUNT" ]; then
-    echo "[2/3] No books found. Populating catalog from Project Gutenberg..."
-    echo "      This may take 5-10 minutes on first run..."
-    python manage.py updatecatalog
+# Need at least 50,000 books for a complete catalog
+if [ "$BOOK_COUNT" -lt 50000 ]; then
+    echo "[2/3] Catalog incomplete ($BOOK_COUNT books). Downloading from Project Gutenberg..."
+    echo "      This may take 10-15 minutes on first run..."
+    
+    # Retry up to 3 times at container level
+    MAX_ATTEMPTS=3
+    ATTEMPT=1
+    
+    while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+        echo ""
+        echo "===== Container-level attempt $ATTEMPT/$MAX_ATTEMPTS ====="
+        
+        if python manage.py updatecatalog; then
+            echo "Catalog update successful!"
+            break
+        else
+            echo "Catalog update failed on attempt $ATTEMPT"
+            
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                echo "Waiting 30 seconds before retry..."
+                sleep 30
+            else
+                echo "ERROR: All attempts failed. Starting server anyway with partial data."
+                echo "You can manually run: python manage.py updatecatalog"
+            fi
+        fi
+        
+        ATTEMPT=$((ATTEMPT + 1))
+    done
 else
-    echo "[2/3] Database has $BOOK_COUNT books. Skipping catalog download."
+    echo "[2/3] Catalog complete ($BOOK_COUNT books). Skipping download."
 fi
 
 # Collect static files

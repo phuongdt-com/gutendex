@@ -2,9 +2,8 @@ from subprocess import call
 import json
 import os
 import shutil
-from time import strftime
+from time import strftime, sleep
 import sys
-import urllib.request
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -18,6 +17,10 @@ TEMP_PATH = settings.CATALOG_TEMP_DIR
 
 URL = 'https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2'
 DOWNLOAD_PATH = os.path.join(TEMP_PATH, 'catalog.tar.bz2')
+
+# Download settings
+MAX_RETRIES = 5
+RETRY_DELAY = 10  # seconds
 
 MOVE_SOURCE_PATH = os.path.join(TEMP_PATH, 'cache/epub')
 MOVE_TARGET_PATH = settings.CATALOG_RDF_DIR
@@ -38,16 +41,82 @@ def get_directory_set(path):
 
 
 def log(*args):
-    print(*args)
+    print(*args, flush=True)
     if not os.path.exists(LOG_DIRECTORY):
         os.makedirs(LOG_DIRECTORY)
     with open(LOG_PATH, 'a') as log_file:
-        text = ' '.join(args) + '\n'
+        text = ' '.join(str(arg) for arg in args) + '\n'
         log_file.write(text)
+
+
+def download_with_wget(url, dest_path, max_retries=MAX_RETRIES):
+    """Download a file using wget with retry and resume support."""
+    
+    for attempt in range(1, max_retries + 1):
+        log(f'    Attempt {attempt}/{max_retries} using wget...')
+        
+        # Delete partial file if exists (wget -c will resume, but file might be corrupt)
+        if attempt > 1 and os.path.exists(dest_path):
+            log('    Deleting partial file for fresh download...')
+            os.remove(dest_path)
+        
+        # Use wget with:
+        # -c: continue/resume partial downloads
+        # -t 20: retry up to 20 times per attempt
+        # --timeout=60: 60 second timeout per operation
+        # --waitretry=10: wait 10 seconds between retries
+        # --read-timeout=60: read timeout
+        # --tries=20: same as -t
+        # -O: output file
+        # --progress=dot:mega: show progress in MB
+        result = call(
+            [
+                'wget',
+                '-c',
+                '-t', '20',
+                '--timeout=60',
+                '--read-timeout=60',
+                '--waitretry=10',
+                '--progress=dot:mega',
+                '-O', dest_path,
+                url
+            ],
+            stdout=sys.stdout,
+            stderr=sys.stderr
+        )
+        
+        if result == 0:
+            # Verify file exists and has reasonable size
+            if os.path.exists(dest_path):
+                file_size = os.path.getsize(dest_path)
+                log(f'    Download complete! File size: {file_size / (1024*1024):.1f} MB')
+                
+                if file_size > 100 * 1024 * 1024:  # At least 100MB
+                    return True
+                else:
+                    log(f'    ERROR: File too small ({file_size / (1024*1024):.1f} MB), expected >100MB')
+            else:
+                log('    ERROR: Download file not found!')
+        else:
+            log(f'    wget failed with exit code {result}')
+        
+        # Clean up for retry
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        
+        if attempt < max_retries:
+            log(f'    Waiting {RETRY_DELAY} seconds before retry...')
+            sleep(RETRY_DELAY)
+        else:
+            log(f'    All {max_retries} attempts failed!')
+            raise CommandError(f'Failed to download catalog after {max_retries} attempts')
+    
+    return False
 
 
 def put_catalog_in_db():
     book_ids = []
+    log('    Scanning catalog directories...')
     for directory_item in os.listdir(settings.CATALOG_RDF_DIR):
         item_path = os.path.join(settings.CATALOG_RDF_DIR, directory_item)
         if os.path.isdir(item_path):
@@ -60,12 +129,19 @@ def put_catalog_in_db():
                 book_ids.append(book_id)
     book_ids.sort()
     book_directories = [str(id) for id in book_ids]
+    
+    total_books = len(book_directories)
+    log(f'    Found {total_books} books to process...')
 
+    processed = 0
     for directory in book_directories:
         id = int(directory)
+        processed += 1
 
-        if (id > 0) and (id % 500 == 0):
-            log('    %d' % id)
+        # Log progress every 1000 books or at specific milestones
+        if processed % 1000 == 0 or processed == total_books:
+            percent = int(processed * 100 / total_books)
+            log(f'    Processing books: {processed}/{total_books} ({percent}%)')
 
         book_path = os.path.join(
             settings.CATALOG_RDF_DIR,
@@ -301,24 +377,74 @@ class Command(BaseCommand):
 
             log('  Making temporary directory...')
             if os.path.exists(TEMP_PATH):
-                raise CommandError(
-                    'The temporary path, `' + TEMP_PATH + '`, already exists.'
-                )
+                # Check if there's a partial download to resume
+                if os.path.exists(DOWNLOAD_PATH):
+                    partial_size = os.path.getsize(DOWNLOAD_PATH)
+                    log(f'    Found existing temp directory with partial download ({partial_size / (1024*1024):.1f} MB)')
+                    log('    Will attempt to resume download...')
+                else:
+                    log('    Cleaning up existing temporary directory...')
+                    shutil.rmtree(TEMP_PATH)
+                    os.makedirs(TEMP_PATH)
             else:
                 os.makedirs(TEMP_PATH)
 
-            log('  Downloading compressed catalog...')
-            urllib.request.urlretrieve(URL, DOWNLOAD_PATH)
+            log('  Downloading compressed catalog from Project Gutenberg...')
+            log('    URL:', URL)
+            log('    This file is approximately 125MB compressed and may take several minutes...')
+            
+            download_with_wget(URL, DOWNLOAD_PATH)
 
-            log('  Decompressing catalog...')
-            if not os.path.exists(DOWNLOAD_PATH):
-                os.makedirs(DOWNLOAD_PATH)
-            with open(os.devnull, 'w') as null:
-                call(
-                    ['tar', 'fjvx', DOWNLOAD_PATH, '-C', TEMP_PATH],
-                    stdout=null,
-                    stderr=null
-                )
+            # Verify download size (should be around 120-130 MB)
+            file_size = os.path.getsize(DOWNLOAD_PATH)
+            expected_min_size = 100 * 1024 * 1024  # 100 MB minimum
+            
+            if file_size < expected_min_size:
+                log(f'  ERROR: Downloaded file is too small ({file_size / (1024*1024):.1f} MB)')
+                log(f'  Expected at least {expected_min_size / (1024*1024):.0f} MB')
+                log('  Deleting corrupt download for fresh retry...')
+                os.remove(DOWNLOAD_PATH)
+                raise CommandError('Downloaded file is incomplete. Please try again.')
+            
+            log('  Decompressing catalog (this may take a few minutes)...')
+            
+            # Run tar and capture output
+            result = call(
+                ['tar', 'fjvx', DOWNLOAD_PATH, '-C', TEMP_PATH],
+                stdout=sys.stdout,
+                stderr=sys.stderr
+            )
+            
+            if result != 0:
+                log(f'  ERROR: tar extraction failed with exit code {result}')
+                log('  The downloaded file may be corrupted.')
+                log('  Deleting corrupt download for fresh retry...')
+                os.remove(DOWNLOAD_PATH)
+                if os.path.exists(TEMP_PATH):
+                    shutil.rmtree(TEMP_PATH)
+                raise CommandError('Tar extraction failed. Downloaded file may be corrupt. Please try again.')
+            
+            # Verify extraction produced enough directories
+            if os.path.exists(MOVE_SOURCE_PATH):
+                extracted_count = len([d for d in os.listdir(MOVE_SOURCE_PATH) if os.path.isdir(os.path.join(MOVE_SOURCE_PATH, d))])
+                log(f'  Extracted {extracted_count} book directories')
+                
+                if extracted_count < 50000:  # Should be ~73,000+
+                    log(f'  ERROR: Only {extracted_count} books extracted, expected 50,000+')
+                    log('  The download appears to be incomplete.')
+                    log('  Deleting corrupt download for fresh retry...')
+                    os.remove(DOWNLOAD_PATH)
+                    if os.path.exists(TEMP_PATH):
+                        shutil.rmtree(TEMP_PATH)
+                    raise CommandError(f'Only {extracted_count} books extracted. Download incomplete. Please try again.')
+            else:
+                log('  ERROR: Extraction directory not found!')
+                os.remove(DOWNLOAD_PATH)
+                if os.path.exists(TEMP_PATH):
+                    shutil.rmtree(TEMP_PATH)
+                raise CommandError('Extraction failed - output directory not found.')
+            
+            log('  Decompression complete!')
 
             log('  Detecting stale directories...')
             if not os.path.exists(MOVE_TARGET_PATH):
@@ -326,6 +452,7 @@ class Command(BaseCommand):
             new_directory_set = get_directory_set(MOVE_SOURCE_PATH)
             old_directory_set = get_directory_set(MOVE_TARGET_PATH)
             stale_directory_set = old_directory_set - new_directory_set
+            log(f'    Found {len(stale_directory_set)} stale directories to remove')
 
             log('  Removing stale directories and books...')
             for directory in stale_directory_set:
@@ -339,7 +466,7 @@ class Command(BaseCommand):
                 path = os.path.join(MOVE_TARGET_PATH, directory)
                 shutil.rmtree(path)
 
-            log('  Replacing old catalog files...')
+            log('  Replacing old catalog files with rsync...')
             with open(os.devnull, 'w') as null:
                 with open(LOG_PATH, 'a') as log_file:
                     call(
@@ -353,6 +480,7 @@ class Command(BaseCommand):
                         stdout=null,
                         stderr=log_file
                     )
+            log('  Rsync complete!')
 
             log('  Putting the catalog in the database...')
             put_catalog_in_db()
@@ -361,10 +489,20 @@ class Command(BaseCommand):
             shutil.rmtree(TEMP_PATH)
 
             log('Done!\n')
+        except CommandError as error:
+            # CommandError means download/extraction failed
+            log('Error:', str(error))
+            log('')
+            # Clean up for fresh retry
+            if os.path.exists(TEMP_PATH):
+                shutil.rmtree(TEMP_PATH)
+            raise  # Re-raise so container knows it failed
         except Exception as error:
             error_message = str(error)
             log('Error:', error_message)
             log('')
-            shutil.rmtree(TEMP_PATH)
+            if os.path.exists(TEMP_PATH):
+                shutil.rmtree(TEMP_PATH)
+            raise  # Re-raise so container knows it failed
 
         send_log_email()
