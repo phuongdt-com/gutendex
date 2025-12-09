@@ -18,6 +18,9 @@ spec:
             component: catalog-update
         spec:
           restartPolicy: OnFailure
+          # Security context for volume permissions
+          securityContext:
+            fsGroup: 1000
           containers:
             - name: catalog-update
               image: adamduongit/adam-gutendex:0.0.1
@@ -54,7 +57,7 @@ spec:
                   mountPath: /app/data
               resources:
                 requests:
-                  cpu: '100m'
+                  cpu: '500m'
                   memory: '512Mi'
                 limits:
                   cpu: '2000m'
@@ -65,4 +68,3 @@ spec:
                 claimName: gutendex-data
           imagePullSecrets:
             - name: docker-registry-secret
-
