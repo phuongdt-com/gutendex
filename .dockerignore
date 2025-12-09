@@ -46,6 +46,6 @@ wiki.md
 .DS_Store
 Thumbs.db
 
-# Database files (will be created during build)
+# Database files - but KEEP data/gutendex.db.gz for pre-built database!
 *.db
-data/
+!data/gutendex.db.gz
