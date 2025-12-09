@@ -4,3 +4,7 @@
 catalog_files
 gutendex/.env
 venv
+rdf-files.tar.bz2
+rdf-files.tar.zip
+gutendex.db
+rdf-files.tar/

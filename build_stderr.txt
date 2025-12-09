@@ -1,0 +1,195 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.builddb
+#1 transferring dockerfile: 3.00kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.11-slim
+#2 DONE 1.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 516B done
+#3 DONE 0.0s
+
+#4 [1/9] FROM docker.io/library/python:3.11-slim@sha256:7cd0079a9bd8800c81632d65251048fc2848bf9afda542224b1b10e0cae45575
+#4 resolve docker.io/library/python:3.11-slim@sha256:7cd0079a9bd8800c81632d65251048fc2848bf9afda542224b1b10e0cae45575 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 12.35kB 0.0s done
+#5 DONE 0.0s
+
+#6 [2/9] WORKDIR /app
+#6 CACHED
+
+#7 [3/9] RUN apt-get update && apt-get install -y --no-install-recommends     gcc     wget     tar     bzip2     rsync     gzip     && rm -rf /var/lib/apt/lists/*
+#7 CACHED
+
+#8 [4/9] COPY requirements.txt .
+#8 CACHED
+
+#9 [5/9] RUN pip install --no-cache-dir -r requirements.txt
+#9 CACHED
+
+#10 [6/9] COPY . .
+#10 DONE 0.0s
+
+#11 [7/9] RUN mkdir -p /app/staticfiles /app/catalog_files /app/media /app/data /output
+#11 DONE 0.3s
+
+#12 [8/9] RUN echo "=========================================" &&     echo "Building Gutendex Database from Scratch" &&     echo "=========================================" &&     echo "" &&     echo "[1/4] Running migrations..." &&     python manage.py migrate --noinput &&     echo "" &&     echo "[2/4] Downloading and importing catalog..." &&     echo "      This will take 20-40 minutes..." &&     python manage.py updatecatalog &&     echo "" &&     echo "[3/4] Collecting static files..." &&     python manage.py collectstatic --noinput &&     echo "" &&     echo "[4/4] Verifying database..." &&     python manage.py shell -c "from books.models import Book; count=Book.objects.count(); print(f'Total books: {count}')" &&     echo "" &&     echo "Database build complete!"
+#12 0.484 =========================================
+#12 0.484 Building Gutendex Database from Scratch
+#12 0.484 =========================================
+#12 0.484 
+#12 0.484 [1/4] Running migrations...
+#12 0.940 Operations to perform:
+#12 0.940   Apply all migrations: admin, auth, books, contenttypes, sessions
+#12 0.941 Running migrations:
+#12 0.947   Applying contenttypes.0001_initial... OK
+#12 0.957   Applying auth.0001_initial... OK
+#12 0.974   Applying admin.0001_initial... OK
+#12 0.986   Applying admin.0002_logentry_remove_auto_add... OK
+#12 0.996   Applying admin.0003_logentry_add_action_flag_choices... OK
+#12 1.003   Applying contenttypes.0002_remove_content_type_name... OK
+#12 1.013   Applying auth.0002_alter_permission_name_max_length... OK
+#12 1.021   Applying auth.0003_alter_user_email_max_length... OK
+#12 1.029   Applying auth.0004_alter_user_username_opts... OK
+#12 1.035   Applying auth.0005_alter_user_last_login_null... OK
+#12 1.041   Applying auth.0006_require_contenttypes_0002... OK
+#12 1.045   Applying auth.0007_alter_validators_add_error_messages... OK
+#12 1.052   Applying auth.0008_alter_user_username_max_length... OK
+#12 1.059   Applying auth.0009_alter_user_last_name_max_length... OK
+#12 1.066   Applying auth.0010_alter_group_name_max_length... OK
+#12 1.074   Applying auth.0011_update_proxy_permissions... OK
+#12 1.080   Applying auth.0012_alter_user_first_name_max_length... OK
+#12 1.088   Applying books.0001_initial... OK
+#12 1.108   Applying books.0002_book_copyright... OK
+#12 1.116   Applying books.0003_auto_20210302_2022... OK
+#12 1.143   Applying books.0004_summary... OK
+#12 1.157   Applying books.0005_book_editors... OK
+#12 1.170   Applying sessions.0001_initial... OK
+#12 1.273 
+#12 1.273 [2/4] Downloading and importing catalog...
+#12 1.273       This will take 20-40 minutes...
+#12 1.668 Starting script at 10:55:54 on December 09, 2025
+#12 1.668   Making temporary directory...
+#12 1.668   Downloading compressed catalog from Project Gutenberg...
+#12 1.668     URL: https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2
+#12 1.668     This file is approximately 125MB compressed and may take several minutes...
+#12 1.668     Attempt 1/5 using wget...
+#12 1.702 --2025-12-09 10:55:54--  https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2
+#12 1.734 Resolving gutenberg.org (gutenberg.org)... 152.19.134.47
+#12 1.760 Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+#12 2.317 HTTP request sent, awaiting response... 200 OK
+#12 2.726 Length: 124913596 (119M) [application/octet-stream]
+#12 2.727 Saving to: ‘/app/catalog_files/tmp/catalog.tar.bz2’
+#12 3.033 
+#12 3.033      0K ........ ........ ........ ........ ........ ........  2%  834K 2m23s
+#12 6.412   3072K ........ ........ ........ ........ ........ ........  5%  379K 3m42s
+#12 15.17   6144K ........ ........ ........ ...                         6%  149K=24s
+#12 26.53 
+#12 26.54 2025-12-09 10:56:19 (333 KB/s) - Read error at byte 8118544/124913596 (Error decoding the received TLS packet.). Retrying.
+#12 26.54 
+#12 27.54 --2025-12-09 10:56:20--  (try: 2)  https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2
+#12 27.54 Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+#12 28.08 HTTP request sent, awaiting response... 206 Partial Content
+#12 28.50 Length: 124913596 (119M), 116795052 (111M) remaining [application/octet-stream]
+#12 28.50 Saving to: ‘/app/catalog_files/tmp/catalog.tar.bz2’
+#12 28.50 
+#12 28.50         [ skipping 6144K ]
+#12 28.50   6144K ,,,,,,,, ,,,,,,,, ,,,,,,,, ,,,..... ........ ........  7% 1.77M 2m28s
+#12 30.20   9216K ........ ........ ........ ........ ........ ........ 10% 3.15M 67s
+#12 31.15  12288K ........ ........ ........ ........ ........ ........ 12% 2.68M 54s
+#12 32.26  15360K ........ ........ ........ ........ ........ ........ 15% 1.15M 63s
+#12 34.87  18432K ........ ........ ........ ........ ........ ........ 17%  665K 81s
+#12 39.58  21504K ........ ........ ........ ........ ........ ........ 20%  472K 1m42s
+#12 46.48  24576K ........ ........ ........ ........ ........ ........ 22%  206K 2m35s
+#12 61.54  27648K ........ ........ ........ ........ ........ .......  25%  179K=50s
+#12 78.04 
+#12 78.04 2025-12-09 10:57:10 (460 KB/s) - Read error at byte 31445837/124913596 (Error decoding the received TLS packet.). Retrying.
+#12 78.04 
+#12 80.04 --2025-12-09 10:57:12--  (try: 3)  https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2
+#12 80.04 Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+#12 80.59 HTTP request sent, awaiting response... 206 Partial Content
+#12 81.02 Length: 124913596 (119M), 93467759 (89M) remaining [application/octet-stream]
+#12 81.02 Saving to: ‘/app/catalog_files/tmp/catalog.tar.bz2’
+#12 81.02 
+#12 81.02         [ skipping 27648K ]
+#12 81.02  27648K ,,,,,,,, ,,,,,,,, ,,,,,,,, ,,,,,,,, ,,,,,,,, ,,,,,,,. 25%  116G 0s
+#12 81.33  30720K ........ ........ ........ ........ ........ ........ 27%  135K 10m53s
+#12 104.3  33792K .                                                     27%  178K=23s
+#12 104.3 
+#12 104.3 2025-12-09 10:57:36 (136 KB/s) - Read error at byte 34683210/124913596 (Error decoding the received TLS packet.). Retrying.
+#12 104.3 
+#12 107.3 --2025-12-09 10:57:39--  (try: 4)  https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2
+#12 107.3 Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+#12 107.9 HTTP request sent, awaiting response... 206 Partial Content
+#12 108.3 Length: 124913596 (119M), 90230386 (86M) remaining [application/octet-stream]
+#12 108.3 Saving to: ‘/app/catalog_files/tmp/catalog.tar.bz2’
+#12 108.3 
+#12 108.3         [ skipping 33792K ]
+#12 108.3  33792K ,....... ........ ........ ........ ........ ........ 30% 1.34M 64s
+#12 110.5  36864K ........ ........ ........ ........ ........ ........ 32% 1.91M 52s
+#12 112.2  39936K ........ ........ ........ ........ ........ ........ 35% 1.40M 51s
+#12 114.3  43008K ........ ........ ........ ........ ........ ........ 37%  714K 64s
+#12 118.7  46080K ........ ........ ........ ........ ........ ........ 40%  349K 91s
+#12 127.6  49152K ........ ........ ........ ........ ........ ........ 42%  415K 1m41s
+#12 134.9  52224K ........ ........ ........ ........ ........ ........ 45% 1.17M 90s
+#12 137.4  55296K ........ ........ ........ ........ ........ ........ 47%  939K 84s
+#12 140.6  58368K ........ ........ ........ ........ ........ ........ 50%  862K 79s
+#12 144.2  61440K ........ ........ ........ ........ ........ ........ 52%  680K 76s
+#12 148.8  64512K ........ ........ ........ ........ ........ ........ 55%  620K 73s
+#12 153.8  67584K ........ ........ ........ ........ ........ ........ 57%  558K 71s
+#12 159.2  70656K ........ ........ ........ ........ ........ ........ 60%  652K 67s
+#12 163.9  73728K ........ ........ ........ ........ ........ ........ 62%  634K 64s
+#12 168.9  76800K ........ ........ ........ ........ ........ ........ 65%  500K 61s
+#12 175.0  79872K ........ ........ ........ ........ ........ ........ 67%  315K 61s
+#12 185.0  82944K ........ ........ ........ ........ ........ ..       70%  164K=93s
+#12 201.3 
+#12 201.3 2025-12-09 10:59:13 (557 KB/s) - Connection closed at byte 87730651. Retrying.
+#12 201.3 
+#12 205.3 --2025-12-09 10:59:17--  (try: 5)  https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2
+#12 205.3 Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+#12 205.9 HTTP request sent, awaiting response... 206 Partial Content
+#12 206.3 Length: 124913596 (119M), 37182945 (35M) remaining [application/octet-stream]
+#12 206.3 Saving to: ‘/app/catalog_files/tmp/catalog.tar.bz2’
+#12 206.3 
+#12 206.3         [ skipping 82944K ]
+#12 206.3  82944K ,,,,,,,, ,,,,,,,, ,,,,,,,, ,,,,,,,, ,,,,,,,, ,,...... 70% 3.78M 84s
+#12 207.1  86016K ........ ........ ........ ........ ........ ........ 73% 1.87M 23s
+#12 208.7  89088K ........ ........ ........ ........ ........ ........ 75% 1.12M 23s
+#12 211.3  92160K ........ ........ ........ ........ ........ ........ 78%  769K 25s
+#12 215.4  95232K ........ ........ ........ ........ ........ ........ 80%  680K 25s
+#12 220.0  98304K ........ ........ ........ ........ ........ ........ 83%  673K 24s
+#12 224.4 101376K ........ ........ ........ ........ ........ ........ 85%  594K 22s
+#12 229.7 104448K ........ ........ ........ ........ ........ ........ 88%  379K 21s
+#12 238.0 107520K ........ ........ ........ ........ ........ ........ 90%  476K 17s
+#12 244.3 110592K ........ ........ ........ ........ ........ ........ 93% 1.32M 12s
+#12 246.5 113664K ........ ........ ........ ........ ........ ........ 95% 1.01M 7s
+#12 249.5 116736K ........ ........ ........ ........ ........ ........ 98%  489K 3s
+#12 255.9 119808K ........ ........ ........ ........ ..               100%  269K=58s
+#12 263.8 
+#12 263.8 2025-12-09 11:00:16 (631 KB/s) - ‘/app/catalog_files/tmp/catalog.tar.bz2’ saved [124913596/124913596]
+#12 263.8 
+#12 263.8     Download complete! File size: 119.1 MB
+#12 263.8   Decompressing catalog (this may take a few minutes)...
+#12 300.6   Extracted 77244 book directories
+#12 300.6   Decompression complete!
+#12 300.6   Detecting stale directories...
+#12 300.8     Found 0 stale directories to remove
+#12 300.8   Removing stale directories and books...
+#12 300.8   Replacing old catalog files with rsync...
+#12 315.8   Rsync complete!
+#12 315.8   Putting the catalog in the database...
+#12 315.8     Scanning catalog directories...
+#12 316.1     Found 77243 books to process...
+#12 415.8     Processing books: 1000/77243 (1%)
+#12 505.0     Processing books: 2000/77243 (2%)
+#12 675.1     Processing books: 3000/77243 (3%)
+#12 843.1     Processing books: 4000/77243 (5%)
+#12 CANCELED
+
+ [33m1 warning found (use docker --debug to expand):
+[0m - SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ENV "SECRET_KEY") (line 20)
+ERROR: failed to build: failed to solve: Canceled: context canceled

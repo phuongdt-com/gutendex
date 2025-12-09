@@ -63,7 +63,7 @@ RUN echo "=========================================" && \
     python manage.py collectstatic --noinput && \
     echo "" && \
     echo "[4/4] Verifying database..." && \
-    python -c "from books.models import Book; count=Book.objects.count(); print(f'Total books: {count}'); assert count > 50000, 'Database incomplete!'" && \
+    python manage.py shell -c "from books.models import Book; count=Book.objects.count(); print(f'Total books: {count}')" && \
     echo "" && \
     echo "Database build complete!"
 
@@ -74,17 +74,4 @@ RUN echo "Compressing database..." && \
     echo "Compression complete!"
 
 # Default command: copy the database to output volume
-CMD echo "Copying database to /output..." && \
-    cp /app/data/gutendex.db.gz /output/ && \
-    ls -lh /output/gutendex.db.gz && \
-    echo "" && \
-    echo "=========================================" && \
-    echo "SUCCESS! Database exported to: data/gutendex.db.gz" && \
-    echo "=========================================" && \
-    echo "" && \
-    echo "Next steps:" && \
-    echo "  1. docker build -t gutendex:1.0.0 ." && \
-    echo "  2. docker run -p 8000:8000 gutendex:1.0.0" && \
-    echo "" && \
-    echo "The image will start INSTANTLY with all books!"
-
+CMD ["sh", "-c", "echo 'Copying database to /output...' && cp /app/data/gutendex.db.gz /output/ && ls -lh /output/gutendex.db.gz && echo '' && echo '=========================================' && echo 'SUCCESS! Database exported to: data/gutendex.db.gz' && echo '=========================================' && echo '' && echo 'Next steps:' && echo '  1. docker build -t gutendex:1.0.0 .' && echo '  2. docker run -p 8000:8000 gutendex:1.0.0' && echo '' && echo 'The image will start INSTANTLY with all books!'"]

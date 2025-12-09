@@ -1,7 +1,10 @@
 from subprocess import call
 import json
 import os
+import platform
 import shutil
+import tarfile
+import zipfile
 from time import strftime, sleep
 import sys
 
@@ -21,6 +24,7 @@ DOWNLOAD_PATH = os.path.join(TEMP_PATH, 'catalog.tar.bz2')
 # Download settings
 MAX_RETRIES = 5
 RETRY_DELAY = 10  # seconds
+IS_WINDOWS = platform.system() == 'Windows'
 
 MOVE_SOURCE_PATH = os.path.join(TEMP_PATH, 'cache/epub')
 MOVE_TARGET_PATH = settings.CATALOG_RDF_DIR
@@ -50,7 +54,7 @@ def log(*args):
 
 
 def download_with_wget(url, dest_path, max_retries=MAX_RETRIES):
-    """Download a file using wget with retry and resume support."""
+    """Download a file using wget with retry and resume support (Linux/Docker only)."""
     
     for attempt in range(1, max_retries + 1):
         log(f'    Attempt {attempt}/{max_retries} using wget...')
@@ -112,6 +116,77 @@ def download_with_wget(url, dest_path, max_retries=MAX_RETRIES):
             raise CommandError(f'Failed to download catalog after {max_retries} attempts')
     
     return False
+
+
+def extract_tar_bz2(archive_path, extract_to):
+    """Extract a tar.bz2 file using Python's tarfile module."""
+    log('    Extracting with Python tarfile...')
+    
+    try:
+        with tarfile.open(archive_path, 'r:bz2') as tar:
+            # Count members for progress
+            members = tar.getmembers()
+            total = len(members)
+            log(f'    Archive contains {total} entries')
+            
+            # Extract all
+            tar.extractall(path=extract_to)
+            
+        log('    Extraction complete!')
+        return True
+    except Exception as e:
+        log(f'    Extraction error: {str(e)}')
+        return False
+
+
+def extract_zip(archive_path, extract_to):
+    """Extract a zip file using Python's zipfile module."""
+    log('    Extracting with Python zipfile...')
+    
+    try:
+        with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+            # Count members for progress
+            members = zip_ref.namelist()
+            total = len(members)
+            log(f'    Archive contains {total} entries')
+            
+            # Extract all
+            zip_ref.extractall(path=extract_to)
+            
+        log('    Extraction complete!')
+        return True
+    except Exception as e:
+        log(f'    Extraction error: {str(e)}')
+        return False
+
+
+def copy_directory(src, dst):
+    """Copy directory contents, replacing destination (cross-platform rsync alternative)."""
+    log(f'    Copying files from {src} to {dst}...')
+    
+    # Remove destination contents first
+    if os.path.exists(dst):
+        for item in os.listdir(dst):
+            item_path = os.path.join(dst, item)
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+            else:
+                os.remove(item_path)
+    else:
+        os.makedirs(dst)
+    
+    # Copy new contents
+    for item in os.listdir(src):
+        src_path = os.path.join(src, item)
+        dst_path = os.path.join(dst, item)
+        
+        if os.path.isdir(src_path):
+            shutil.copytree(src_path, dst_path)
+        else:
+            shutil.copy2(src_path, dst_path)
+    
+    log('    Copy complete!')
+    return True
 
 
 def put_catalog_in_db():
@@ -389,11 +464,30 @@ class Command(BaseCommand):
             else:
                 os.makedirs(TEMP_PATH)
 
-            log('  Downloading compressed catalog from Project Gutenberg...')
-            log('    URL:', URL)
-            log('    This file is approximately 125MB compressed and may take several minutes...')
-            
-            download_with_wget(URL, DOWNLOAD_PATH)
+            # On Windows, use pre-downloaded file; on Linux/Docker, download fresh
+            if IS_WINDOWS:
+                local_file = os.path.join(settings.BASE_DIR, 'data', 'rdf-files.tar.zip')
+                log('  Using local catalog file...')
+                log(f'    Path: {local_file}')
+                
+                if not os.path.exists(local_file):
+                    raise CommandError(
+                        f'Catalog file not found at {local_file}\n'
+                        f'Please download it manually from:\n'
+                        f'  {URL}\n'
+                        f'And save it to: data/rdf-files.tar.zip'
+                    )
+                
+                # Copy to temp path
+                file_size = os.path.getsize(local_file)
+                log(f'    File size: {file_size / (1024*1024):.1f} MB')
+                shutil.copy2(local_file, DOWNLOAD_PATH)
+                log('    Copied to temp directory!')
+            else:
+                log('  Downloading compressed catalog from Project Gutenberg...')
+                log('    URL:', URL)
+                log('    This file is approximately 125MB compressed and may take several minutes...')
+                download_with_wget(URL, DOWNLOAD_PATH)
 
             # Verify download size (should be around 120-130 MB)
             file_size = os.path.getsize(DOWNLOAD_PATH)
@@ -408,22 +502,34 @@ class Command(BaseCommand):
             
             log('  Decompressing catalog (this may take a few minutes)...')
             
-            # Run tar silently (no verbose output)
-            with open(os.devnull, 'w') as devnull:
-                result = call(
-                    ['tar', 'fjx', DOWNLOAD_PATH, '-C', TEMP_PATH],
-                    stdout=devnull,
-                    stderr=devnull
-                )
-            
-            if result != 0:
-                log(f'  ERROR: tar extraction failed with exit code {result}')
-                log('  The downloaded file may be corrupted.')
-                log('  Deleting corrupt download for fresh retry...')
-                os.remove(DOWNLOAD_PATH)
-                if os.path.exists(TEMP_PATH):
-                    shutil.rmtree(TEMP_PATH)
-                raise CommandError('Tar extraction failed. Downloaded file may be corrupt. Please try again.')
+            # Use Python zipfile on Windows, system tar on Linux
+            if IS_WINDOWS:
+                success = extract_zip(DOWNLOAD_PATH, TEMP_PATH)
+                if not success:
+                    log('  ERROR: Extraction failed')
+                    log('  The downloaded file may be corrupted.')
+                    log('  Deleting corrupt download for fresh retry...')
+                    os.remove(DOWNLOAD_PATH)
+                    if os.path.exists(TEMP_PATH):
+                        shutil.rmtree(TEMP_PATH)
+                    raise CommandError('Extraction failed. Downloaded file may be corrupt. Please try again.')
+            else:
+                # Run tar silently (no verbose output) on Linux
+                with open(os.devnull, 'w') as devnull:
+                    result = call(
+                        ['tar', 'fjx', DOWNLOAD_PATH, '-C', TEMP_PATH],
+                        stdout=devnull,
+                        stderr=devnull
+                    )
+                
+                if result != 0:
+                    log(f'  ERROR: tar extraction failed with exit code {result}')
+                    log('  The downloaded file may be corrupted.')
+                    log('  Deleting corrupt download for fresh retry...')
+                    os.remove(DOWNLOAD_PATH)
+                    if os.path.exists(TEMP_PATH):
+                        shutil.rmtree(TEMP_PATH)
+                    raise CommandError('Tar extraction failed. Downloaded file may be corrupt. Please try again.')
             
             # Verify extraction produced enough directories
             if os.path.exists(MOVE_SOURCE_PATH):
@@ -467,21 +573,26 @@ class Command(BaseCommand):
                 path = os.path.join(MOVE_TARGET_PATH, directory)
                 shutil.rmtree(path)
 
-            log('  Replacing old catalog files with rsync...')
-            with open(os.devnull, 'w') as null:
-                with open(LOG_PATH, 'a') as log_file:
-                    call(
-                        [
-                            'rsync',
-                            '-va',
-                            '--delete-after',
-                            MOVE_SOURCE_PATH + '/',
-                            MOVE_TARGET_PATH
-                        ],
-                        stdout=null,
-                        stderr=log_file
-                    )
-            log('  Rsync complete!')
+            log('  Replacing old catalog files...')
+            if IS_WINDOWS:
+                # Use Python's shutil for cross-platform compatibility
+                copy_directory(MOVE_SOURCE_PATH, MOVE_TARGET_PATH)
+            else:
+                # Use rsync on Linux for efficiency
+                with open(os.devnull, 'w') as null:
+                    with open(LOG_PATH, 'a') as log_file:
+                        call(
+                            [
+                                'rsync',
+                                '-va',
+                                '--delete-after',
+                                MOVE_SOURCE_PATH + '/',
+                                MOVE_TARGET_PATH
+                            ],
+                            stdout=null,
+                            stderr=log_file
+                        )
+            log('  File copy complete!')
 
             log('  Putting the catalog in the database...')
             put_catalog_in_db()
