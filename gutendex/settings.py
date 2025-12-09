@@ -18,10 +18,18 @@ import os
 env = environ.Env(
     ADMIN_EMAILS=(list, []),
     ADMIN_NAMES=(list, []),
-    ALLOWED_HOSTS=(list, []),
+    ALLOWED_HOSTS=(list, ['*']),
     DEBUG=(bool, False),
     MANAGER_EMAILS=(list, []),
     MANAGER_NAMES=(list, []),
+    SECRET_KEY=(str, 'django-insecure-default-key-change-in-production'),
+    STATIC_ROOT=(str, '/app/staticfiles'),
+    MEDIA_ROOT=(str, '/app/media'),
+    DATABASE_PATH=(str, '/app/data/gutendex.db'),
+    EMAIL_HOST=(str, ''),
+    EMAIL_HOST_ADDRESS=(str, ''),
+    EMAIL_HOST_PASSWORD=(str, ''),
+    EMAIL_HOST_USER=(str, ''),
 )
 environ.Env.read_env()
 
@@ -95,15 +103,20 @@ WSGI_APPLICATION = 'gutendex.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/1.10/ref/settings/#databases
+# Using SQLite for simplicity - all-in-one deployment
+
+DATABASE_PATH = env('DATABASE_PATH')
+
+# Ensure database directory exists
+os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': env('DATABASE_NAME'),
-        'USER': env('DATABASE_USER'),
-        'PASSWORD': env('DATABASE_PASSWORD'),
-        'HOST': env('DATABASE_HOST'),
-        'PORT': env('DATABASE_PORT'),
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': DATABASE_PATH,
+        'OPTIONS': {
+            'timeout': 30,
+        }
     }
 }
 
@@ -171,7 +184,7 @@ MANAGERS = [
 ]
 
 
-# Email
+# Email (optional)
 EMAIL_HOST = env('EMAIL_HOST')
 EMAIL_HOST_ADDRESS = env('EMAIL_HOST_ADDRESS')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')

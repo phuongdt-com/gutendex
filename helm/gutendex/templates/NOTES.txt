@@ -1,0 +1,51 @@
+🎉 Gutendex has been deployed successfully!
+
+This is an all-in-one deployment with SQLite database.
+The book catalog (~70,000 books) is pre-populated in the Docker image.
+
+{{- if .Values.ingress.enabled }}
+
+Access your Gutendex API at:
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+
+{{- else if contains "NodePort" .Values.service.type }}
+
+Get the application URL by running:
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "gutendex.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+
+{{- else if contains "LoadBalancer" .Values.service.type }}
+
+Get the application URL by running:
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+  kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "gutendex.fullname" . }}
+
+{{- else if contains "ClusterIP" .Values.service.type }}
+
+Get the application URL by running:
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "gutendex.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:8000
+
+{{- end }}
+
+📚 API Endpoints:
+  - Home page: /
+  - Books list: /books
+  - Book detail: /books/<id>
+  - Search: /books?search=dickens
+
+⚙️ Configuration:
+  - Debug mode: {{ .Values.django.debug }}
+  - Database: SQLite (embedded in image)
+  - Replicas: {{ .Values.replicaCount }}
+
+📝 Note: This deployment uses SQLite which is read-only and best suited for
+single-replica deployments. For high-availability, consider the PostgreSQL version.
+
+For more information, visit: https://gutendex.com

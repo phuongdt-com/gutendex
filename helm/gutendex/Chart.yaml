@@ -1,0 +1,19 @@
+apiVersion: v2
+name: gutendex
+description: A Helm chart for Gutendex - Project Gutenberg book catalog API (SQLite all-in-one)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - gutendex
+  - django
+  - books
+  - api
+  - project-gutenberg
+  - sqlite
+maintainers:
+  - name: DevOps Team
+home: https://gutendex.com
+sources:
+  - https://github.com/garethbjohnson/gutendex
+# No dependencies - SQLite is built into the image
