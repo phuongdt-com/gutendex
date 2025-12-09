@@ -6,6 +6,8 @@ metadata:
 spec:
   replicas: 1
   revisionHistoryLimit: 2
+  # Allow 12 hours for initial catalog download (default is 10 min)
+  progressDeadlineSeconds: 43200
   # Use Recreate strategy for SQLite (single writer)
   strategy:
     type: Recreate
@@ -81,22 +83,23 @@ spec:
             limits:
               cpu: '1000m'
               memory: '1024Mi'
+          # Probes with long initial delay for catalog download (up to 12 hours)
           livenessProbe:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 6
+            initialDelaySeconds: 43200
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            initialDelaySeconds: 60
+            periodSeconds: 30
             timeoutSeconds: 5
-            failureThreshold: 6
+            failureThreshold: 1440
       volumes:
         - name: data
           persistentVolumeClaim:

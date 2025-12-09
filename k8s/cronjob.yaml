@@ -11,6 +11,10 @@ spec:
   successfulJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      # Allow 12 hours for catalog update
+      activeDeadlineSeconds: 43200
+      # Don't retry failed jobs automatically
+      backoffLimit: 1
       template:
         metadata:
           labels:
