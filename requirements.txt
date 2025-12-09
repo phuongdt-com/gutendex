@@ -7,3 +7,4 @@ gunicorn==23.0.0
 inflection==0.5.1
 six==1.16.0
 sqlparse>=0.5.0 # not directly required, pinned by Snyk to avoid a vulnerability
+whitenoise==6.7.0

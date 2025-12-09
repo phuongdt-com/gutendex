@@ -1,26 +1,31 @@
-# Gutendex Helm Chart (All-in-One SQLite Version)
+# Gutendex Helm Chart
 
 This Helm chart deploys the Gutendex application - a web API for serving book catalog information from Project Gutenberg.
 
 ## Features
 
-✅ **All-in-One Image** - Database, catalog data, and static files are all pre-built into the Docker image  
-✅ **Zero Configuration** - Just run and it works  
-✅ **~70,000 Books** - Full Project Gutenberg catalog pre-loaded  
 ✅ **SQLite Database** - No external database required  
+✅ **Persistent Storage** - Data survives pod restarts  
+✅ **Daily Sync** - CronJob updates catalog from Project Gutenberg daily  
+✅ **~70,000 Books** - Full Project Gutenberg catalog  
+✅ **Auto-Initialize** - First deployment automatically populates the database  
 
 ## Prerequisites
 
 - Kubernetes 1.23+
 - Helm 3.0+
+- PV provisioner support (for persistence)
 
 ## Quick Start
 
 ### 1. Build the Docker Image
 
 ```bash
-# Build the all-in-one image (this takes several minutes to populate the catalog)
+# Build the image (lightweight, data initialized on first run)
 docker build -t gutendex:1.0.0 .
+
+# OR build with catalog pre-populated (larger image, faster first startup)
+docker build --build-arg BUILD_CATALOG=true -t gutendex:1.0.0 .
 
 # Push to your registry
 docker tag gutendex:1.0.0 your-registry/gutendex:1.0.0
@@ -30,14 +35,7 @@ docker push your-registry/gutendex:1.0.0
 ### 2. Install the Chart
 
 ```bash
-# Install with default settings
-helm install gutendex ./helm/gutendex \
-  --namespace gutendex \
-  --create-namespace \
-  --set image.repository=your-registry/gutendex \
-  --set image.tag=1.0.0
-
-# Or with a custom secret key (recommended for production)
+# Install with daily catalog updates enabled (default)
 helm install gutendex ./helm/gutendex \
   --namespace gutendex \
   --create-namespace \
@@ -46,7 +44,19 @@ helm install gutendex ./helm/gutendex \
   --set django.secretKey="$(openssl rand -base64 50)"
 ```
 
-### 3. Access the API
+### 3. Wait for Initialization
+
+On first deployment, the init container will populate the database (~5-10 minutes):
+
+```bash
+# Watch initialization progress
+kubectl logs -f deployment/gutendex -c init-database -n gutendex
+
+# Check pod status
+kubectl get pods -n gutendex -w
+```
+
+### 4. Access the API
 
 ```bash
 # Port forward to access locally
@@ -65,9 +75,45 @@ kubectl port-forward svc/gutendex 8080:80 -n gutendex
 | `django.secretKey` | Django secret key | `change-me...` |
 | `django.debug` | Enable debug mode | `false` |
 | `django.allowedHosts` | Allowed hosts | `*` |
-| `django.workers` | Gunicorn workers | `4` |
-| `service.type` | Service type | `ClusterIP` |
+| `persistence.enabled` | Enable persistent storage | `true` |
+| `persistence.size` | Storage size | `10Gi` |
+| `catalogUpdate.enabled` | Enable daily catalog sync | `true` |
+| `catalogUpdate.schedule` | Cron schedule | `0 2 * * *` |
 | `ingress.enabled` | Enable ingress | `false` |
+
+### Daily Catalog Updates
+
+By default, the chart creates a CronJob that syncs with Project Gutenberg daily at 2am UTC:
+
+```yaml
+catalogUpdate:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2am UTC
+```
+
+To change the schedule:
+
+```bash
+helm upgrade gutendex ./helm/gutendex \
+  --set catalogUpdate.schedule="0 4 * * *"  # Daily at 4am UTC
+```
+
+To manually trigger an update:
+
+```bash
+kubectl create job --from=cronjob/gutendex-catalog-update manual-update -n gutendex
+```
+
+### Persistence
+
+Persistence is enabled by default to store the SQLite database:
+
+```yaml
+persistence:
+  enabled: true
+  storageClass: ""  # Use default storage class
+  size: 10Gi
+```
 
 ### Enable Ingress
 
@@ -86,15 +132,6 @@ ingress:
     - secretName: gutendex-tls
       hosts:
         - gutendex.example.com
-```
-
-### Use NodePort for Local Testing
-
-```bash
-helm install gutendex ./helm/gutendex \
-  --set service.type=NodePort \
-  --set image.repository=gutendex \
-  --set image.tag=1.0.0
 ```
 
 ## API Usage
@@ -116,6 +153,28 @@ Once deployed, you can access:
 | `ids` | Get specific book IDs | `?ids=11,12,13` |
 | `sort` | Sort order | `?sort=ascending` |
 
+## Monitoring Catalog Updates
+
+### Check CronJob Status
+
+```bash
+kubectl get cronjobs -n gutendex
+kubectl get jobs -n gutendex
+```
+
+### View Update Logs
+
+```bash
+# Get the latest job
+kubectl logs job/$(kubectl get jobs -n gutendex -o jsonpath='{.items[-1].metadata.name}') -n gutendex
+```
+
+### Check Last Successful Update
+
+```bash
+kubectl get cronjob gutendex-catalog-update -n gutendex -o jsonpath='{.status.lastSuccessfulTime}'
+```
+
 ## Upgrading
 
 ```bash
@@ -130,25 +189,10 @@ helm upgrade gutendex ./helm/gutendex \
 helm uninstall gutendex --namespace gutendex
 ```
 
-## Limitations
-
-- **Single Replica Only**: SQLite doesn't support concurrent writes, so keep `replicaCount: 1`
-- **Read-Only Data**: The book catalog is baked into the image; to update, rebuild the image
-- **No Persistence**: If the pod restarts, the database resets to the image state
-
-## Updating the Book Catalog
-
-To update the catalog with the latest books from Project Gutenberg:
+**Note:** This will not delete PVCs. To delete data:
 
 ```bash
-# Rebuild the Docker image (this will download fresh catalog data)
-docker build -t gutendex:1.1.0 .
-docker push your-registry/gutendex:1.1.0
-
-# Update the deployment
-helm upgrade gutendex ./helm/gutendex \
-  --namespace gutendex \
-  --set image.tag=1.1.0
+kubectl delete pvc gutendex-data -n gutendex
 ```
 
 ## Troubleshooting
@@ -159,14 +203,64 @@ kubectl get pods -n gutendex
 kubectl describe pod <pod-name> -n gutendex
 ```
 
-### View Logs
+### View Application Logs
 ```bash
 kubectl logs -f deployment/gutendex -n gutendex
+```
+
+### View Init Container Logs
+```bash
+kubectl logs deployment/gutendex -c init-database -n gutendex
 ```
 
 ### Access Django Shell
 ```bash
 kubectl exec -it deployment/gutendex -n gutendex -- python manage.py shell
+```
+
+### Force Re-initialize Database
+```bash
+# Delete the PVC and reinstall
+kubectl delete pvc gutendex-data -n gutendex
+helm upgrade gutendex ./helm/gutendex --namespace gutendex
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Kubernetes Cluster                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐     ┌──────────────────────────────────┐ │
+│  │   Ingress    │────▶│          Service                 │ │
+│  └──────────────┘     └──────────────────────────────────┘ │
+│                                    │                        │
+│                                    ▼                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │                   Deployment                          │  │
+│  │  ┌────────────────┐    ┌────────────────────────┐   │  │
+│  │  │ Init Container │───▶│   Gutendex Container   │   │  │
+│  │  │ (first run)    │    │   (gunicorn + Django)  │   │  │
+│  │  └────────────────┘    └────────────────────────┘   │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                    │                        │
+│                                    ▼                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │              PersistentVolumeClaim                    │  │
+│  │  ┌─────────────────┐  ┌─────────────────────────┐   │  │
+│  │  │  gutendex.db    │  │  staticfiles/           │   │  │
+│  │  │  (SQLite)       │  │  catalog_files/         │   │  │
+│  │  └─────────────────┘  └─────────────────────────┘   │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                    ▲                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │              CronJob (Daily at 2am)                   │  │
+│  │  • python manage.py updatecatalog                    │  │
+│  │  • python manage.py collectstatic                    │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## License

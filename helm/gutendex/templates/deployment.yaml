@@ -6,6 +6,10 @@ metadata:
     {{- include "gutendex.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- if .Values.persistence.enabled }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "gutendex.selectorLabels" . | nindent 6 }}
@@ -26,6 +30,74 @@ spec:
       serviceAccountName: {{ include "gutendex.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.persistence.enabled }}
+      initContainers:
+        # Initialize database if it doesn't exist
+        - name: init-database
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "=========================================="
+              echo "Gutendex Database Initialization"
+              echo "=========================================="
+              
+              if [ ! -f /app/data/gutendex.db ]; then
+                echo "[1/4] Database not found. Starting fresh initialization..."
+                
+                echo "[2/4] Running database migrations..."
+                python manage.py migrate --noinput
+                
+                echo "[3/4] Downloading and populating catalog from Project Gutenberg..."
+                echo "      This may take 5-10 minutes..."
+                python manage.py updatecatalog
+                
+                echo "[4/4] Collecting static files..."
+                python manage.py collectstatic --noinput
+                
+                echo "=========================================="
+                echo "Initialization complete!"
+                echo "=========================================="
+              else
+                echo "Database exists at /app/data/gutendex.db"
+                echo "Running migrations if needed..."
+                python manage.py migrate --noinput
+                echo "Migrations complete."
+              fi
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gutendex.fullname" . }}
+                  key: SECRET_KEY
+            - name: DEBUG
+              value: {{ .Values.django.debug | quote }}
+            - name: ALLOWED_HOSTS
+              value: {{ .Values.django.allowedHosts | quote }}
+            - name: DATABASE_PATH
+              value: "/app/data/gutendex.db"
+            - name: STATIC_ROOT
+              value: "/app/data/staticfiles"
+            - name: MEDIA_ROOT
+              value: "/app/data/media"
+            - name: CATALOG_DIR
+              value: "/app/data/catalog_files"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 200m
+              memory: 512Mi
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
@@ -55,6 +127,16 @@ spec:
               value: {{ .Values.django.debug | quote }}
             - name: ALLOWED_HOSTS
               value: {{ .Values.django.allowedHosts | quote }}
+            {{- if .Values.persistence.enabled }}
+            - name: DATABASE_PATH
+              value: "/app/data/gutendex.db"
+            - name: STATIC_ROOT
+              value: "/app/data/staticfiles"
+            - name: MEDIA_ROOT
+              value: "/app/data/media"
+            - name: CATALOG_DIR
+              value: "/app/data/catalog_files"
+            {{- end }}
           {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
@@ -79,6 +161,17 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "gutendex.fullname" . }}-data
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

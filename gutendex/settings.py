@@ -14,6 +14,10 @@ import environ
 import os
 
 
+# Build paths inside the project like this: os.path.join(BASE_DIR, ...)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 # Import environment variables
 env = environ.Env(
     ADMIN_EMAILS=(list, []),
@@ -26,16 +30,13 @@ env = environ.Env(
     STATIC_ROOT=(str, '/app/staticfiles'),
     MEDIA_ROOT=(str, '/app/media'),
     DATABASE_PATH=(str, '/app/data/gutendex.db'),
+    CATALOG_DIR=(str, os.path.join(BASE_DIR, 'catalog_files')),
     EMAIL_HOST=(str, ''),
     EMAIL_HOST_ADDRESS=(str, ''),
     EMAIL_HOST_PASSWORD=(str, ''),
     EMAIL_HOST_USER=(str, ''),
 )
 environ.Env.read_env()
-
-
-# Build paths inside the project like this: os.path.join(BASE_DIR, ...)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # Quick-start development settings - unsuitable for production
@@ -71,6 +72,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files in production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -163,6 +165,9 @@ STATIC_ROOT = env('STATIC_ROOT')
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
+# WhiteNoise configuration for serving static files in production
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 
 # User-uploaded files
 MEDIA_ROOT = env('MEDIA_ROOT')
@@ -192,11 +197,16 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER')
 
 
 # Directory paths for catalog files and updater
-BASE_CATALOG_DIR = os.path.join(BASE_DIR, 'catalog_files')
+# Can be overridden via CATALOG_DIR environment variable for persistent storage
+BASE_CATALOG_DIR = env('CATALOG_DIR')
 CATALOG_RDF_DIR = os.path.join(BASE_CATALOG_DIR, 'rdf')
 CATALOG_INDEX_DIR = os.path.join(CATALOG_RDF_DIR, 'index.json')
 CATALOG_LOG_DIR = os.path.join(BASE_CATALOG_DIR, 'log')
 CATALOG_TEMP_DIR = os.path.join(BASE_CATALOG_DIR, 'tmp')
+
+# Ensure catalog directories exist
+os.makedirs(CATALOG_RDF_DIR, exist_ok=True)
+os.makedirs(CATALOG_LOG_DIR, exist_ok=True)
 
 
 # Settings for Django REST Framework JSON API

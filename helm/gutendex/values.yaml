@@ -1,4 +1,4 @@
-# Default values for gutendex (SQLite all-in-one version)
+# Default values for gutendex (SQLite version with daily sync)
 # This is a YAML-formatted file.
 
 # -- Number of replicas (keep at 1 for SQLite)
@@ -99,6 +99,40 @@ django:
   allowedHosts: "*"
   # -- Number of gunicorn workers
   workers: 4
+
+# Persistence configuration for database and static files
+persistence:
+  # -- Enable persistence (required for catalog updates to persist)
+  enabled: true
+  # -- Storage class (leave empty for default)
+  storageClass: ""
+  # -- Access mode
+  accessMode: ReadWriteOnce
+  # -- Storage size (needs space for SQLite DB + catalog files)
+  size: 10Gi
+
+# Catalog update CronJob configuration
+catalogUpdate:
+  # -- Enable daily catalog update from Project Gutenberg
+  enabled: true
+  # -- Cron schedule (default: daily at 2am UTC)
+  schedule: "0 2 * * *"
+  # -- CronJob concurrency policy
+  concurrencyPolicy: Forbid
+  # -- Failed jobs history limit
+  failedJobsHistoryLimit: 3
+  # -- Successful jobs history limit
+  successfulJobsHistoryLimit: 3
+  # -- Job restart policy
+  restartPolicy: OnFailure
+  # -- Resources for the update job
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
 
 # Liveness probe configuration
 livenessProbe:

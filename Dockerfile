@@ -1,16 +1,16 @@
 # =============================================================================
-# Gutendex All-in-One Docker Image
+# Gutendex Docker Image
 # =============================================================================
-# This Dockerfile builds a complete, ready-to-run image with:
-# - All dependencies installed
-# - Database migrated
-# - Book catalog populated (~70,000 books from Project Gutenberg)
-# - Static files collected
-#
-# Just run the image and the API is ready to use!
+# This Dockerfile builds the Gutendex application image.
+# 
+# Features:
+# - Auto-initializes database on first run
+# - Downloads and populates book catalog from Project Gutenberg
+# - Serves static files via WhiteNoise
+# - Daily catalog sync via Kubernetes CronJob (when deployed with Helm)
 # =============================================================================
 
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -21,29 +21,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 
 # =============================================================================
-# Production stage with data population
+# Production stage
 # =============================================================================
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Default environment variables for build
-ENV SECRET_KEY="build-time-secret-key-will-be-overridden"
+# Default environment variables
 ENV DEBUG="false"
 ENV ALLOWED_HOSTS="*"
 ENV STATIC_ROOT="/app/staticfiles"
 ENV MEDIA_ROOT="/app/media"
 ENV DATABASE_PATH="/app/data/gutendex.db"
+ENV CATALOG_DIR="/app/catalog_files"
 
 WORKDIR /app
 
-# Install runtime dependencies (wget for downloading catalog)
+# Install runtime dependencies required for catalog sync:
+# - wget: for downloading files
+# - tar + bzip2: for extracting rdf-files.tar.bz2
+# - rsync: for syncing catalog files
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
+    tar \
+    bzip2 \
+    rsync \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy wheels and install
@@ -53,29 +59,11 @@ RUN pip install --no-cache /wheels/* && rm -rf /wheels
 # Copy application code
 COPY . .
 
+# Make entrypoint executable
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Create necessary directories
 RUN mkdir -p /app/staticfiles /app/catalog_files /app/media /app/data
-
-# =============================================================================
-# Build Steps: Migrate, Populate, Collect Static
-# =============================================================================
-
-# Step 1: Run database migrations
-RUN python manage.py migrate --noinput
-
-# Step 2: Populate the database with Project Gutenberg catalog
-# This downloads and processes ~70,000 books (takes several minutes)
-RUN python manage.py updatecatalog
-
-# Step 3: Collect static files
-RUN python manage.py collectstatic --noinput
-
-# Clean up temporary catalog files to reduce image size (keep only db)
-RUN rm -rf /app/catalog_files/tmp /app/catalog_files/rdf
-
-# =============================================================================
-# Runtime Configuration
-# =============================================================================
 
 # Create non-root user for runtime
 RUN groupadd --gid 1000 appgroup && \
@@ -88,8 +76,11 @@ USER appuser
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
+
+# Entrypoint handles migrations, catalog population, and static files
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # Default command
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "gutendex.wsgi:application"]
