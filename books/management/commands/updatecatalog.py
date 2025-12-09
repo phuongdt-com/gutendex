@@ -408,12 +408,13 @@ class Command(BaseCommand):
             
             log('  Decompressing catalog (this may take a few minutes)...')
             
-            # Run tar and capture output
-            result = call(
-                ['tar', 'fjvx', DOWNLOAD_PATH, '-C', TEMP_PATH],
-                stdout=sys.stdout,
-                stderr=sys.stderr
-            )
+            # Run tar silently (no verbose output)
+            with open(os.devnull, 'w') as devnull:
+                result = call(
+                    ['tar', 'fjx', DOWNLOAD_PATH, '-C', TEMP_PATH],
+                    stdout=devnull,
+                    stderr=devnull
+                )
             
             if result != 0:
                 log(f'  ERROR: tar extraction failed with exit code {result}')

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gutendex-service
+  namespace: ocean
+  labels:
+    app: gutendex
+spec:
+  selector:
+    app: gutendex
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gutendex-data
+  namespace: ocean
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # Longhorn storage class
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 512Mi
+

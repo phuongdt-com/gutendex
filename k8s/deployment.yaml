@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gutendex
+  namespace: ocean
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  # Use Recreate strategy for SQLite (single writer)
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gutendex
+  template:
+    metadata:
+      labels:
+        app: gutendex
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '8000'
+    spec:
+      containers:
+        - name: gutendex
+          image: adamduongit/adam-gutendex:0.0.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gutendex-secret
+                  key: SECRET_KEY
+            - name: DEBUG
+              value: "false"
+            - name: ALLOWED_HOSTS
+              value: "*"
+            # Use persistent volume paths
+            - name: DATABASE_PATH
+              value: "/app/data/gutendex.db"
+            - name: STATIC_ROOT
+              value: "/app/data/staticfiles"
+            - name: MEDIA_ROOT
+              value: "/app/data/media"
+            - name: CATALOG_DIR
+              value: "/app/data/catalog_files"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: '250m'
+              memory: '256Mi'
+            limits:
+              cpu: '1000m'
+              memory: '1024Mi'
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: gutendex-data
+      imagePullSecrets:
+        - name: docker-registry-secret
