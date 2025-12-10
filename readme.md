@@ -15,5 +15,5 @@ docker build -t adamduongit/adam-gutendex:0.0.4 .
 
 # Step 4: Push to Docker Hub
 ```bash
-docker push adamduongit/adam-gutendex:0.0.3
+docker push adamduongit/adam-gutendex:0.0.4
 ```

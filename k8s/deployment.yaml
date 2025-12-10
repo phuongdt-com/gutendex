@@ -50,7 +50,7 @@ spec:
             runAsUser: 0
       containers:
         - name: gutendex
-          image: adamduongit/adam-gutendex:0.0.3
+          image: adamduongit/adam-gutendex:0.0.4
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
