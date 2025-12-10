@@ -8,3 +8,6 @@ rdf-files.tar.bz2
 rdf-files.tar.zip
 gutendex.db
 rdf-files.tar/
+data/
+data/gutendex.db.gz
+data/gutendex.db
