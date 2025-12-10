@@ -61,7 +61,7 @@ COPY . .
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Create necessary directories
-RUN mkdir -p /app/staticfiles /app/catalog_files /app/media /app/data
+RUN mkdir -p /app/staticfiles /app/catalog_files /app/media /app/data /app/prebuilt
 
 # =============================================================================
 # DATABASE SETUP - Priority order:
@@ -70,20 +70,20 @@ RUN mkdir -p /app/staticfiles /app/catalog_files /app/media /app/data
 # 3. Neither - Downloads on first container start
 # =============================================================================
 
-# Check for pre-built database and use it (FASTEST option)
+# Check for pre-built database and store in /app/prebuilt/ (not /app/data/ which gets overwritten by PVC)
 RUN if [ -f /app/data/gutendex.db.gz ]; then \
-        echo "=== Found pre-built database! Extracting... ===" && \
-        gunzip -c /app/data/gutendex.db.gz > /app/data/gutendex.db && \
-        rm /app/data/gutendex.db.gz && \
-        echo "Pre-built database ready!" && \
-        SECRET_KEY="build-time-key" python manage.py migrate --noinput && \
-        SECRET_KEY="build-time-key" python manage.py collectstatic --noinput; \
+        echo "=== Found pre-built database! ===" && \
+        mv /app/data/gutendex.db.gz /app/prebuilt/gutendex.db.gz && \
+        echo "Pre-built database stored in /app/prebuilt/" && \
+        echo "Will be extracted to PVC at runtime."; \
     elif [ "$BUILD_CATALOG" = "true" ]; then \
         echo "=== Building catalog from source (this takes 20-40 min)... ===" && \
         SECRET_KEY="build-time-key" python manage.py migrate --noinput && \
         SECRET_KEY="build-time-key" python manage.py updatecatalog && \
         SECRET_KEY="build-time-key" python manage.py collectstatic --noinput && \
-        rm -rf /app/catalog_files/tmp; \
+        rm -rf /app/catalog_files/tmp && \
+        gzip -c /app/data/gutendex.db > /app/prebuilt/gutendex.db.gz && \
+        echo "Database built and stored in /app/prebuilt/"; \
     else \
         echo "=== No pre-built database. Will download on first run. ==="; \
     fi

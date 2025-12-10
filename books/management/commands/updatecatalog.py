@@ -139,20 +139,41 @@ def extract_tar_bz2(archive_path, extract_to):
         return False
 
 
-def extract_zip(archive_path, extract_to):
-    """Extract a zip file using Python's zipfile module."""
-    log('    Extracting with Python zipfile...')
+def extract_zip_tar(archive_path, extract_to):
+    """Extract a .tar.zip file (zip containing a tar) using Python."""
+    log('    Step 1: Extracting zip archive...')
     
     try:
+        # First extract the zip to get the tar file
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-            # Count members for progress
             members = zip_ref.namelist()
-            total = len(members)
-            log(f'    Archive contains {total} entries')
-            
-            # Extract all
+            log(f'    Zip contains: {members}')
             zip_ref.extractall(path=extract_to)
-            
+        
+        # Find the tar file that was extracted
+        tar_file = None
+        for member in members:
+            extracted_path = os.path.join(extract_to, member)
+            if member.endswith('.tar') or tarfile.is_tarfile(extracted_path):
+                tar_file = extracted_path
+                break
+        
+        if not tar_file:
+            # Maybe the zip directly contains the catalog files
+            log('    No tar file found in zip, checking for direct extraction...')
+            return True
+        
+        log(f'    Step 2: Extracting tar archive: {os.path.basename(tar_file)}')
+        
+        # Extract the tar file
+        with tarfile.open(tar_file, 'r:*') as tar:
+            members = tar.getmembers()
+            log(f'    Tar contains {len(members)} entries')
+            tar.extractall(path=extract_to)
+        
+        # Remove the intermediate tar file
+        os.remove(tar_file)
+        
         log('    Extraction complete!')
         return True
     except Exception as e:
@@ -502,9 +523,9 @@ class Command(BaseCommand):
             
             log('  Decompressing catalog (this may take a few minutes)...')
             
-            # Use Python zipfile on Windows, system tar on Linux
+            # Use Python zipfile+tarfile on Windows, system tar on Linux
             if IS_WINDOWS:
-                success = extract_zip(DOWNLOAD_PATH, TEMP_PATH)
+                success = extract_zip_tar(DOWNLOAD_PATH, TEMP_PATH)
                 if not success:
                     log('  ERROR: Extraction failed')
                     log('  The downloaded file may be corrupted.')

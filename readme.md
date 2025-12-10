@@ -10,7 +10,7 @@ This creates `data/gutendex.db.gz` (~45MB with 77,000+ books)
 
 # Step 3: Build Docker Image
 ```bash
-docker build -t adamduongit/adam-gutendex:0.0.3 .
+docker build -t adamduongit/adam-gutendex:0.0.4 .
 ```
 
 # Step 4: Push to Docker Hub
